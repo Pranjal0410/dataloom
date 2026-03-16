@@ -13,9 +13,17 @@ import CheckpointsPanel from "./history/CheckpointsPanel";
 import InputDialog from "./common/InputDialog";
 import ConfirmDialog from "./common/ConfirmDialog";
 import Toast from "./common/Toast";
-import { saveProject, exportProject, getLogs, getCheckpoints, revertToCheckpoint } from "../api";
+import {
+  saveProject,
+  exportProject,
+  getLogs,
+  getCheckpoints,
+  revertToCheckpoint,
+  undoLastTransformation,
+} from "../api";
 import proptype from "prop-types";
-
+import { useProjectContext } from "../context/ProjectContext";
+import { getProjectDetails } from "../api";
 import {
   LuFilter,
   LuArrowUpDown,
@@ -30,10 +38,13 @@ import {
   LuScissors,
   LuLayoutList,
   LuGroup,
+  LuUndo2,
 } from "react-icons/lu";
 
 const MenuNavbar = ({ projectId, onTransform }) => {
+  const { updateData } = useProjectContext();
   const [showGroupByForm, setShowGroupByForm] = useState(false);
+
   const [showFilterForm, setShowFilterForm] = useState(false);
   const [showSortForm, setShowSortForm] = useState(false);
   const [showDropDuplicateForm, setShowDropDuplicateForm] = useState(false);
@@ -74,6 +85,9 @@ const MenuNavbar = ({ projectId, onTransform }) => {
     if (showCheckpoints) fetchCheckpoints();
   }, [showLogs, showCheckpoints, fetchLogs, fetchCheckpoints]);
 
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
   const handleSave = () => {
     setIsInputOpen(true);
   };
@@ -103,6 +117,27 @@ const MenuNavbar = ({ projectId, onTransform }) => {
       URL.revokeObjectURL(url);
     } catch {
       setToast({ message: "Failed to export project.", type: "error" });
+    }
+  };
+
+  const handleUndo = async () => {
+    try {
+      await undoLastTransformation(projectId);
+      // Close any open forms
+      setShowFilterForm(false);
+      setShowSortForm(false);
+      setActiveForm(null);
+      updateData([], [], {});
+      const data = await getProjectDetails(projectId);
+      updateData(data.columns, data.rows, data.dtypes);
+      await fetchLogs();
+      setToast({ message: "Last transformation undone!", type: "success" });
+    } catch (error) {
+      if (error.response?.status === 404) {
+        setToast({ message: "No transformations to undo.", type: "error" });
+      } else {
+        setToast({ message: "Failed to undo transformation.", type: "error" });
+      }
     }
   };
 
@@ -187,6 +222,7 @@ const MenuNavbar = ({ projectId, onTransform }) => {
         items: [
           { label: "Save", icon: LuSave, onClick: handleSave },
           { label: "Export", icon: LuDownload, onClick: handleExport },
+          { label: "Undo", icon: LuUndo2, onClick: handleUndo },
         ],
       },
       {
@@ -333,6 +369,7 @@ const MenuNavbar = ({ projectId, onTransform }) => {
             setActiveForm(null);
           }}
           projectId={projectId}
+          onTransform={onTransform}
         />
       )}
       {showSortForm && (
@@ -342,6 +379,7 @@ const MenuNavbar = ({ projectId, onTransform }) => {
             setActiveForm(null);
           }}
           projectId={projectId}
+          onTransform={onTransform}
         />
       )}
       {showDropDuplicateForm && (
